@@ -4,7 +4,7 @@
   "description": "Workout while your AI models think",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.116.0"
+    "vscode": "^1.107.0"
   },
   "categories": [
     "Other"
@@ -12,10 +12,33 @@
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "workout-tracker-container",
+          "title": "Workout Tracker",
+          "icon": "resources/heart.svg"
+        }
+      ]
+    },
+    "views": {
+      "workout-tracker-container": [
+        {
+          "id": "workout-tracker-view",
+          "name": "Workout",
+          "type": "webview",
+          "icon": "resources/heart.svg"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "workout-vs-code-extension.helloWorld",
         "title": "Hello World"
+      },
+      {
+        "command": "workout-vs-code-extension.triggerWorkout",
+        "title": "Trigger Workout"
       }
     ]
   },
