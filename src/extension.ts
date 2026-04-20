@@ -68,42 +68,58 @@ function setupAntigravityWatcher(provider: WorkoutViewProvider) {
 
 export function deactivate() {}
 
-const WORKOUTS = [
-    "25 Pushups",
-    "60s Plank",
-    "30 Squats",
-    "15 Reverse Lunges (each leg)",
-    "50 Jumping Jacks",
-    "25 Crunches",
-    "30 Calf Raises",
-    "60s Wall Sit",
-    "15 Burpees",
-    "20 Diamond Pushups",
-    "40 Mountain Climbers",
-    "30 Russian Twists",
-    "20 Leg Raises",
-    "30s Side Plank (each side)",
-    "20 Tricep Dips (use chair)",
-    "40 High Knees",
-    "20 Alternating Curtsy Lunges",
-    "15 Pike Pushups",
-    "30 Bicycle Crunches",
-    "60s Shadow Boxing",
-    "15 Squat Jumps",
-    "20 Plank Taps",
-    "10 Spiderman Pushups",
-    "30 Wide Squats"
+interface WorkoutConfig {
+    name: string;
+    type: 'reps' | 'time';
+    min: number;
+    max: number;
+    calPerUnit: number;
+}
+
+const WORKOUTS: WorkoutConfig[] = [
+    { name: "Pushups", type: 'reps', min: 10, max: 30, calPerUnit: 0.5 },
+    { name: "Plank", type: 'time', min: 30, max: 90, calPerUnit: 0.1 },
+    { name: "Squats", type: 'reps', min: 20, max: 50, calPerUnit: 0.5 },
+    { name: "Reverse Lunges (each leg)", type: 'reps', min: 10, max: 20, calPerUnit: 0.4 },
+    { name: "Jumping Jacks", type: 'reps', min: 30, max: 100, calPerUnit: 0.4 },
+    { name: "Crunches", type: 'reps', min: 20, max: 50, calPerUnit: 0.3 },
+    { name: "Calf Raises", type: 'reps', min: 20, max: 50, calPerUnit: 0.2 },
+    { name: "Wall Sit", type: 'time', min: 30, max: 90, calPerUnit: 0.1 },
+    { name: "Burpees", type: 'reps', min: 5, max: 20, calPerUnit: 1.1 },
+    { name: "Diamond Pushups", type: 'reps', min: 10, max: 25, calPerUnit: 0.6 },
+    { name: "Mountain Climbers", type: 'reps', min: 20, max: 60, calPerUnit: 0.4 },
+    { name: "Russian Twists", type: 'reps', min: 20, max: 50, calPerUnit: 0.3 },
+    { name: "Leg Raises", type: 'reps', min: 10, max: 30, calPerUnit: 0.3 },
+    { name: "Side Plank (each side)", type: 'time', min: 20, max: 60, calPerUnit: 0.1 },
+    { name: "Tricep Dips (use chair)", type: 'reps', min: 10, max: 30, calPerUnit: 0.4 },
+    { name: "High Knees", type: 'reps', min: 20, max: 60, calPerUnit: 0.4 },
+    { name: "Alternating Curtsy Lunges", type: 'reps', min: 10, max: 30, calPerUnit: 0.4 },
+    { name: "Pike Pushups", type: 'reps', min: 5, max: 20, calPerUnit: 0.6 },
+    { name: "Bicycle Crunches", type: 'reps', min: 20, max: 50, calPerUnit: 0.3 },
+    { name: "Shadow Boxing", type: 'time', min: 30, max: 120, calPerUnit: 0.2 },
+    { name: "Squat Jumps", type: 'reps', min: 10, max: 25, calPerUnit: 0.9 },
+    { name: "Plank Taps", type: 'reps', min: 10, max: 40, calPerUnit: 0.4 },
+    { name: "Spiderman Pushups", type: 'reps', min: 5, max: 20, calPerUnit: 0.6 },
+    { name: "Wide Squats", type: 'reps', min: 20, max: 50, calPerUnit: 0.5 }
 ];
+
+interface ActiveWorkout {
+    name: string;
+    amount: number;
+    type: 'reps' | 'time';
+    calories: number;
+}
 
 interface WorkoutSession {
     timestamp: number;
     workout: string;
+    calories: number;
 }
 
 class WorkoutViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'workout-tracker-view';
     private _view?: vscode.WebviewView;
-    private _currentWorkout?: string;
+    private _currentWorkout?: ActiveWorkout;
 
     constructor(
         private readonly _extensionUri: vscode.Uri,
@@ -162,18 +178,33 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
         return this._globalState.get<WorkoutSession[]>(this._getHistoryKey(), []);
     }
 
-    private _saveWorkoutToHistory(workout: string) {
+    private _saveWorkoutToHistory(workout: ActiveWorkout) {
         const history = this._getHistory();
+        const workoutString = workout.type === 'time' ? `${workout.amount}s ${workout.name}` : `${workout.amount} ${workout.name}`;
         history.push({
             timestamp: Date.now(),
-            workout: workout
+            workout: workoutString,
+            calories: workout.calories
         });
         this._globalState.update(this._getHistoryKey(), history);
     }
 
-    private _getRandomWorkout(): string {
-        const index = Math.floor(Math.random() * WORKOUTS.length);
-        return WORKOUTS[index];
+    private _getRandomWorkout(): ActiveWorkout {
+        const config = WORKOUTS[Math.floor(Math.random() * WORKOUTS.length)];
+        let amount = Math.floor(Math.random() * (config.max - config.min + 1)) + config.min;
+        
+        if (config.type === 'time') {
+            amount = Math.round(amount / 5) * 5; // Round time to nearest 5
+        }
+
+        const calories = Math.round(amount * config.calPerUnit * 10) / 10;
+
+        return {
+            name: config.name,
+            amount: amount,
+            type: config.type,
+            calories: calories
+        };
     }
 
     private _updateWebview() {
@@ -187,13 +218,18 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
         const history = this._getHistory();
         const workout = this._currentWorkout;
 
+        const totalCalories = history.reduce((sum, session) => sum + (session.calories || 0), 0);
+
         const historyHtml = history.length > 0 
-            ? history.reverse().map(session => {
+            ? [...history].reverse().map(session => {
                 const time = new Date(session.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 return `
                     <div class="history-item">
-                        <span class="history-time">${time}</span>
-                        <span class="history-name">${session.workout}</span>
+                        <div class="history-left">
+                            <span class="history-time">${time}</span>
+                            <span class="history-name">${session.workout}</span>
+                        </div>
+                        <span class="history-calories">+${(session.calories || 0).toFixed(1)} kcal</span>
                     </div>`;
             }).join('')
             : '<div class="no-history">No workouts yet today. Get started!</div>';
@@ -202,9 +238,14 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
             ? `<div class="workout-container">
                     <div class="icon">💪</div>
                     <div class="title">Workout of the Moment</div>
-                    <h1 class="workout">${workout}</h1>
+                    <h1 class="workout">
+                        <span id="workout-amount" class="rolling-number">0</span><span id="workout-unit" style="display:none;">${workout.type === 'time' ? 's' : ''}</span> <span id="workout-name" style="display:none;">${workout.name}</span>
+                    </h1>
+                    <div id="workout-calories-container" class="calories-badge" style="display:none;">
+                        🔥 <span id="workout-calories">0</span> kcal
+                    </div>
                 </div>
-                <button id="done-button">I DID IT!</button>`
+                <button id="done-button" style="display:none;">I DID IT!</button>`
             : `<div class="waiting-container">
                     <div class="icon">🤖</div>
                     <div class="title">Status</div>
@@ -254,11 +295,45 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                         color: var(--vscode-textLink-foreground);
                         margin: 0;
                         line-height: 1.2;
+                        min-height: 34px;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        gap: 6px;
+                    }
+                    .rolling-number {
+                        display: inline-block;
+                        color: var(--vscode-charts-orange);
+                        font-variant-numeric: tabular-nums;
+                    }
+                    .rolling-number.landed {
+                        color: var(--vscode-textLink-foreground);
+                        transform: scale(1.1);
+                        transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+                    }
+                    .fade-in {
+                        animation: fadeIn 0.5s ease-in-out;
+                    }
+                    @keyframes fadeIn {
+                        from { opacity: 0; transform: translateY(5px); }
+                        to { opacity: 1; transform: translateY(0); }
                     }
                     .waiting {
                         font-size: 20px;
                         color: var(--vscode-disabledForeground);
                         margin: 0;
+                    }
+                    .calories-badge {
+                        display: inline-flex;
+                        align-items: center;
+                        background: var(--vscode-badge-background);
+                        color: var(--vscode-badge-foreground);
+                        padding: 4px 12px;
+                        border-radius: 12px;
+                        font-size: 13px;
+                        font-weight: 600;
+                        margin-top: 15px;
+                        border: 1px solid var(--vscode-widget-border);
                     }
                     .description {
                         font-size: 13px;
@@ -283,7 +358,7 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                     }
                     .history-container {
                         margin-top: auto;
-                        padding-top: 20px;
+                        padding-top: 0;
                         width: 100%;
                         border-top: 1px solid var(--vscode-widget-border);
                         display: flex;
@@ -292,25 +367,35 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                         overflow-y: auto;
                     }
                     .history-title {
-                        font-size: 14px;
+                        font-size: 12px;
                         color: var(--vscode-descriptionForeground);
-                        margin-bottom: 15px;
                         text-transform: uppercase;
                         letter-spacing: 1px;
                         position: sticky;
                         top: 0;
                         background-color: var(--vscode-editor-background);
-                        padding: 5px 0;
+                        padding: 20px 0 10px 0;
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        z-index: 10;
+                        border-bottom: 1px solid var(--vscode-widget-border);
+                        margin-bottom: 10px;
                     }
                     .history-item {
                         display: flex;
                         justify-content: space-between;
+                        align-items: center;
                         padding: 8px 12px;
                         background: var(--vscode-editor-inactiveSelectionBackground);
                         margin-bottom: 6px;
                         border-radius: 4px;
                         font-size: 13px;
                         text-align: left;
+                    }
+                    .history-left {
+                        display: flex;
+                        align-items: center;
                     }
                     .history-time {
                         color: var(--vscode-descriptionForeground);
@@ -320,6 +405,11 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                     .history-name {
                         color: var(--vscode-foreground);
                         font-weight: 500;
+                    }
+                    .history-calories {
+                        font-weight: 600;
+                        color: var(--vscode-charts-orange);
+                        font-size: 12px;
                     }
                     .no-history {
                         color: var(--vscode-disabledForeground);
@@ -345,7 +435,10 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                 ${contentHtml}
 
                 <div class="history-container">
-                    <div class="history-title">Today's Activity (${history.length})</div>
+                    <div class="history-title">
+                        <span>Today's Activity (${history.length})</span>
+                        <span style="color: var(--vscode-charts-red); font-size: 12px;">🔥 ${totalCalories.toFixed(1)} kcal</span>
+                    </div>
                     ${historyHtml}
                 </div>
 
@@ -358,6 +451,44 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                                 type: 'workoutDone'
                             });
                         });
+                    }
+
+                    const amountEl = document.getElementById('workout-amount');
+                    const unitEl = document.getElementById('workout-unit');
+                    const nameEl = document.getElementById('workout-name');
+                    const calContainer = document.getElementById('workout-calories-container');
+                    const calEl = document.getElementById('workout-calories');
+                    
+                    const targetAmount = ${workout ? workout.amount : 0};
+                    const targetCalories = ${workout ? workout.calories : 0};
+
+                    if (amountEl && targetAmount > 0) {
+                        let counter = 0;
+                        const steps = 30;
+                        const interval = setInterval(() => {
+                            counter++;
+                            if (counter >= steps) {
+                                clearInterval(interval);
+                                amountEl.innerText = targetAmount;
+                                amountEl.classList.add('landed');
+                                if (unitEl) unitEl.style.display = 'inline';
+                                if (nameEl) nameEl.style.display = 'inline';
+                                if (calContainer) {
+                                    calContainer.style.display = 'inline-flex';
+                                    calContainer.classList.add('fade-in');
+                                    calEl.innerText = targetCalories.toFixed(1);
+                                }
+                                if (doneButton) {
+                                    doneButton.style.display = 'block';
+                                    doneButton.classList.add('fade-in');
+                                }
+                            } else {
+                                amountEl.innerText = Math.floor(Math.random() * 99) + 1;
+                            }
+                        }, 40);
+                    } else if (doneButton && !amountEl) {
+                        // If no workout active, don't show done button
+                        doneButton.style.display = 'none';
                     }
                 </script>
             </body>
