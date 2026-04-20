@@ -32,62 +32,37 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 let lastTriggerTime = 0;
-let lastFilename = '';
 const COOLDOWN_MS = 1000; // Very short cooldown, just to debounce the initial prompt write
 
 function setupAntigravityWatcher(provider: WorkoutViewProvider) {
-    // Watch the brain directory specifically for overview.txt updates
-    const brainPath = path.join(os.homedir(), '.gemini', 'antigravity', 'brain');
+    // Watch the root Antigravity directory to catch conversation updates (.pb files)
+    // which usually happen immediately upon prompt submission.
+    const antigravityPath = path.join(os.homedir(), '.gemini', 'antigravity');
     
-    if (fs.existsSync(brainPath)) {
+    if (fs.existsSync(antigravityPath)) {
         try {
-            fs.watch(brainPath, { recursive: true }, (eventType, filename) => {
+            // Watch recursively to catch changes in 'conversations' or 'brain'
+            fs.watch(antigravityPath, { recursive: true }, (eventType, filename) => {
+                // If a workout is already active, ignore everything else.
+                // This is key to preventing the AI response stream from resetting the trigger.
                 if (provider.isWorkoutActive()) {
                     return;
                 }
 
-                // We only care about the main conversation log
-                if (!filename || !filename.endsWith('overview.txt')) {
-                    return;
-                }
-
-                const fullPath = path.join(brainPath, filename);
-                if (fs.existsSync(fullPath)) {
-                    try {
-                        const stats = fs.statSync(fullPath);
-                        if (stats.size === 0) return;
-                        
-                        // Read the last 4KB of the file to find the latest log entry
-                        const fd = fs.openSync(fullPath, 'r');
-                        const bufferSize = Math.min(stats.size, 4096);
-                        const buffer = Buffer.alloc(bufferSize);
-                        fs.readSync(fd, buffer, 0, bufferSize, stats.size - bufferSize);
-                        fs.closeSync(fd);
-                        
-                        const content = buffer.toString('utf-8');
-                        const lines = content.trim().split('\n');
-                        const lastLine = lines[lines.length - 1];
-                        
-                        // ONLY trigger if the very last action was a text prompt from the user
-                        // This ignores tool approvals (CODE_ACTION, RUN_COMMAND, etc.)
-                        if (lastLine && lastLine.includes('"type":"USER_INPUT"')) {
-                            const now = Date.now();
-                            if (now - lastTriggerTime > COOLDOWN_MS) {
-                                lastTriggerTime = now;
-                                provider.triggerWorkout();
-                            }
-                        }
-                    } catch (e) {
-                        // Ignore file read errors (e.g. file locked)
-                    }
+                const now = Date.now();
+                if (now - lastTriggerTime > COOLDOWN_MS) {
+                    lastTriggerTime = now;
+                    
+                    // Trigger INSTANTLY. No delay.
+                    provider.triggerWorkout();
                 }
             });
-            console.log(`[Workout Tracker] Watching Antigravity brain at ${brainPath}`);
+            console.log(`[Workout Tracker] Watching Antigravity at ${antigravityPath}`);
         } catch (error) {
             console.error(`[Workout Tracker] Failed to watch Antigravity:`, error);
         }
     } else {
-        console.log(`[Workout Tracker] Antigravity path not found at ${brainPath}`);
+        console.log(`[Workout Tracker] Antigravity path not found at ${antigravityPath}`);
     }
 }
 
