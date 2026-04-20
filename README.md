@@ -1,71 +1,48 @@
-# workout-vs-code-extension README
+# Workout While Training 💪
 
-This is the README for your extension "workout-vs-code-extension". After writing up a brief description, we recommend including the following sections.
+**Workout While Training** is a gamified VS Code extension designed to keep you active during your workday. Whenever you submit a prompt to your AI assistant (or manually trigger it), the extension challenges you with a short, randomized physical exercise. 
 
-## Features
+Stop staring at loading bars and start burning calories!
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+## ✨ Key Features
 
-For example if there is an image subfolder under your extension project workspace:
+- **Randomized Exercises:** Get challenged with a mix of rep-based (Pushups, Squats, Crunches) and time-based (Planks, Wall Sits, Bear Crawls) exercises.
+- **Interactive Timer:** Built-in countdown timer for time-based exercises with audio cues and automatic completion tracking.
+- **Gamified Feedback:** Enjoy satisfying 8-bit "level up" jingles, confetti animations, and cinematic calorie counters when you complete a workout.
+- **30-Day Contribution Graph:** Track your consistency with a GitHub-style activity heat map directly in your sidebar. Click on any past day to see exactly what you accomplished!
+- **AI Prompt Detection:** Seamlessly integrates with your workflow by automatically triggering a workout prompt when you submit a query to the Antigravity AI.
 
-\!\[feature X\]\(images/feature-x.png\)
+## 🚀 Installation Instructions
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+To install this extension in your local VS Code environment:
 
-## Requirements
+1. Obtain or build the `.vsix` package file (e.g., `workout-vs-code-extension-0.0.1.vsix`).
+2. Open VS Code.
+3. Open the **Extensions** view (`Ctrl+Shift+X` on Windows/Linux or `Cmd+Shift+X` on Mac).
+4. Click the **`...`** (Views and More Actions) menu in the top right corner of the Extensions panel.
+5. Select **Install from VSIX...** from the dropdown menu.
+6. Browse your filesystem, select the `.vsix` file, and click Install.
+7. The extension will automatically activate in your sidebar!
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+## 💡 Usage
 
-## Extension Settings
+- **Sidebar View:** Once installed, look for the Heart icon (`$(heart)`) in your VS Code Activity Bar on the left. Click it to view your Workout Tracker.
+- **Trigger a Workout:** Workouts will trigger automatically when you interact with the AI assistant. You can also manually trigger a workout by clicking the Heart icon in your bottom Status Bar, or by running `Workout Tracker: Trigger Workout` from the Command Palette (`Ctrl+Shift+P`).
+- **Complete a Workout:** If it's a rep-based exercise, simply do the work and click the **✅ I DID IT!** button. If it's time-based, click **⏱️ START TIMER** and follow the audio cues.
+- **Review History:** Use the 30-day contribution graph at the top of the sidebar to review past days.
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+## 🛠️ Development Setup
 
-For example:
+Want to modify the exercises, change the sounds, or tweak the UI? Here's how to run the extension locally:
 
-This extension contributes the following settings:
+1. Clone the repository and navigate into the project folder.
+2. Run `npm install` to install dependencies.
+3. Press `F5` in VS Code. This will compile the TypeScript code and launch a new "Extension Development Host" window with your local code active.
+4. Make changes to `src/extension.ts` or other files.
+5. In the Development Host window, press `Ctrl+R` (or `Cmd+R`) to reload the window and see your changes instantly.
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
-
-## Known Issues
-
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
-
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+### Packaging a New Version
+When you're ready to create a new installable package for others:
+1. Ensure you have the `vsce` CLI tool installed (`npm install -g @vscode/vsce`).
+2. Run `vsce package` in the root directory.
+3. A new `.vsix` file will be generated, ready for distribution!
