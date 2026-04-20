@@ -90,7 +90,6 @@ const WORKOUTS: WorkoutConfig[] = [
     { name: "Mountain Climbers", type: 'reps', min: 20, max: 60, calPerUnit: 0.4 },
     { name: "Russian Twists", type: 'reps', min: 20, max: 50, calPerUnit: 0.3 },
     { name: "Leg Raises", type: 'reps', min: 10, max: 30, calPerUnit: 0.3 },
-    { name: "Side Plank (each side)", type: 'time', min: 20, max: 60, calPerUnit: 0.1 },
     { name: "Tricep Dips (use chair)", type: 'reps', min: 10, max: 30, calPerUnit: 0.4 },
     { name: "High Knees", type: 'reps', min: 20, max: 60, calPerUnit: 0.4 },
     { name: "Alternating Curtsy Lunges", type: 'reps', min: 10, max: 30, calPerUnit: 0.4 },
@@ -100,7 +99,14 @@ const WORKOUTS: WorkoutConfig[] = [
     { name: "Squat Jumps", type: 'reps', min: 10, max: 25, calPerUnit: 0.9 },
     { name: "Plank Taps", type: 'reps', min: 10, max: 40, calPerUnit: 0.4 },
     { name: "Spiderman Pushups", type: 'reps', min: 5, max: 20, calPerUnit: 0.6 },
-    { name: "Wide Squats", type: 'reps', min: 20, max: 50, calPerUnit: 0.5 }
+    { name: "Wide Squats", type: 'reps', min: 20, max: 50, calPerUnit: 0.5 },
+    { name: "Shoulder Taps", type: 'time', min: 30, max: 60, calPerUnit: 0.2 },
+    { name: "Hollow Body Hold", type: 'time', min: 20, max: 45, calPerUnit: 0.2 },
+    { name: "Superman Hold", type: 'time', min: 30, max: 60, calPerUnit: 0.15 },
+    { name: "Glute Bridge Hold", type: 'time', min: 30, max: 90, calPerUnit: 0.1 },
+    { name: "Bear Crawl", type: 'time', min: 30, max: 60, calPerUnit: 0.5 },
+    { name: "Jog in Place", type: 'time', min: 60, max: 180, calPerUnit: 0.3 },
+    { name: "Dead Bug", type: 'time', min: 30, max: 60, calPerUnit: 0.2 }
 ];
 
 interface ActiveWorkout {
@@ -219,12 +225,18 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
         const workout = this._currentWorkout;
 
         const totalCalories = history.reduce((sum, session) => sum + (session.calories || 0), 0);
+        // Only show the cinematic rollup and glimmer if the last update was very recent
+        const wasJustAdded = history.length > 0 && (Date.now() - history[history.length - 1].timestamp < 5000);
+        const lastCalories = wasJustAdded ? history[history.length - 1].calories : 0;
+        const startCalories = totalCalories - lastCalories;
 
         const historyHtml = history.length > 0 
-            ? [...history].reverse().map(session => {
+            ? [...history].reverse().map((session, index) => {
                 const time = new Date(session.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                // Persistent glimmer for the top item as long as no new workout is active
+                const isNewest = index === 0 && !workout;
                 return `
-                    <div class="history-item">
+                    <div class="history-item ${isNewest ? 'glimmer' : ''}">
                         <div class="history-left">
                             <span class="history-time">${time}</span>
                             <span class="history-name">${session.workout}</span>
@@ -245,6 +257,7 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                         🔥 <span id="workout-calories">0</span> kcal
                     </div>
                 </div>
+                <button id="timer-button" style="display:none; background-color: var(--vscode-charts-orange); margin-bottom: 10px;">START TIMER</button>
                 <button id="done-button" style="display:none;">I DID IT!</button>`
             : `<div class="waiting-container">
                     <div class="icon">🤖</div>
@@ -300,6 +313,26 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                         justify-content: center;
                         align-items: center;
                         gap: 6px;
+                    }
+                    @keyframes successPulse {
+                        0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(46, 160, 67, 0.7); border-color: var(--vscode-widget-border); }
+                        50% { transform: scale(1.02); box-shadow: 0 0 20px 5px rgba(46, 160, 67, 0); border-color: #2ea043; }
+                        100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(46, 160, 67, 0); border-color: var(--vscode-widget-border); }
+                    }
+                    .success-anim {
+                        animation: successPulse 0.8s ease-out;
+                        background-color: rgba(46, 160, 67, 0.1) !important;
+                    }
+                    .confetti {
+                        position: absolute;
+                        font-size: 30px;
+                        pointer-events: none;
+                        animation: floatUp 1.2s ease-out forwards;
+                        z-index: 100;
+                    }
+                    @keyframes floatUp {
+                        0% { transform: translateY(0) scale(0.5); opacity: 1; }
+                        100% { transform: translateY(-100px) scale(1.2); opacity: 0; }
                     }
                     .rolling-number {
                         display: inline-block;
@@ -416,6 +449,14 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                         font-style: italic;
                         font-size: 13px;
                     }
+                    @keyframes glimmerAnim {
+                        0% { box-shadow: 0 0 0 0 rgba(255, 165, 0, 0.4); border: 1px solid var(--vscode-charts-orange); }
+                        50% { box-shadow: 0 0 10px 2px rgba(255, 165, 0, 0.2); border: 1px solid var(--vscode-charts-orange); opacity: 0.8; }
+                        100% { box-shadow: 0 0 0 0 rgba(255, 165, 0, 0.4); border: 1px solid var(--vscode-charts-orange); }
+                    }
+                    .glimmer {
+                        animation: glimmerAnim 3s infinite ease-in-out;
+                    }
                     .icon {
                         margin-bottom: 15px;
                         font-size: 32px;
@@ -437,7 +478,7 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                 <div class="history-container">
                     <div class="history-title">
                         <span>Today's Activity (${history.length})</span>
-                        <span style="color: var(--vscode-charts-red); font-size: 12px;">🔥 ${totalCalories.toFixed(1)} kcal</span>
+                        <span id="total-calories-display" data-target="${totalCalories.toFixed(1)}" data-start="${startCalories.toFixed(1)}" style="color: var(--vscode-charts-red); font-size: 12px; font-weight: bold;">🔥 ${startCalories.toFixed(1)} kcal</span>
                     </div>
                     ${historyHtml}
                 </div>
@@ -445,13 +486,152 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                 <script>
                     const vscode = acquireVsCodeApi();
                     const doneButton = document.getElementById('done-button');
+                    
                     if (doneButton) {
                         doneButton.addEventListener('click', () => {
+                            doneButton.style.display = 'none';
+                            completeWorkout();
+                        });
+                    }
+
+                    // Better Audio Engine
+                    let audioCtx;
+                    const getAudioCtx = () => {
+                        if (!audioCtx) {
+                            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                        }
+                        if (audioCtx.state === 'suspended') {
+                            audioCtx.resume();
+                        }
+                        return audioCtx;
+                    };
+
+                    const playFireSound = () => {
+                        try {
+                            const ctx = getAudioCtx();
+                            const bufferSize = ctx.sampleRate * 2; // 2 seconds
+                            const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+                            const data = buffer.getChannelData(0);
+                            for (let i = 0; i < bufferSize; i++) {
+                                data[i] = Math.random() * 2 - 1; // White noise
+                            }
+                            const noise = ctx.createBufferSource();
+                            noise.buffer = buffer;
+                            
+                            const filter = ctx.createBiquadFilter();
+                            filter.type = 'lowpass';
+                            filter.frequency.value = 400; // Muffled roaring fire
+
+                            const gain = ctx.createGain();
+                            gain.gain.setValueAtTime(0.5, ctx.currentTime);
+                            gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 1.8);
+
+                            noise.connect(filter);
+                            filter.connect(gain);
+                            gain.connect(ctx.destination);
+                            noise.start();
+                        } catch(e) {}
+                    };
+
+                    const totalCalEl = document.getElementById('total-calories-display');
+                    if (totalCalEl) {
+                        const start = parseFloat(totalCalEl.getAttribute('data-start'));
+                        const target = parseFloat(totalCalEl.getAttribute('data-target'));
+                        if (target > start) {
+                            playFireSound();
+                            let current = start;
+                            const diff = target - start;
+                            const steps = 30;
+                            let step = 0;
+                            const interval = setInterval(() => {
+                                step++;
+                                current += diff / steps;
+                                totalCalEl.innerText = '🔥 ' + current.toFixed(1) + ' kcal';
+                                if (step >= steps) {
+                                    clearInterval(interval);
+                                    totalCalEl.innerText = '🔥 ' + target.toFixed(1) + ' kcal';
+                                }
+                            }, 40);
+                        } else {
+                            totalCalEl.innerText = '🔥 ' + target.toFixed(1) + ' kcal';
+                        }
+                    }
+
+                    const playSound = (freq, duration, type = 'sine') => {
+                        try {
+                            const ctx = getAudioCtx();
+                            const oscillator = ctx.createOscillator();
+                            const gainNode = ctx.createGain();
+                            oscillator.type = type;
+                            oscillator.frequency.setValueAtTime(freq, ctx.currentTime);
+                            gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+                            oscillator.connect(gainNode);
+                            gainNode.connect(ctx.destination);
+                            oscillator.start();
+                            oscillator.stop(ctx.currentTime + (duration / 1000));
+                        } catch (e) { console.error('Audio error:', e); }
+                    };
+
+                    const speak = (text) => {
+                        try {
+                            const msg = new SpeechSynthesisUtterance(text);
+                            msg.rate = 1.2;
+                            window.speechSynthesis.speak(msg);
+                        } catch (e) {}
+                    };
+
+                    const playSuccessChime = () => {
+                        try {
+                            const ctx = getAudioCtx();
+                            const now = ctx.currentTime;
+                            // 8-bit "Level Up" Jingle
+                            const notes = [
+                                { f: 523.25, t: 0, d: 0.1 },     // C5
+                                { f: 659.25, t: 0.1, d: 0.1 },   // E5
+                                { f: 783.99, t: 0.2, d: 0.1 },   // G5
+                                { f: 1046.50, t: 0.3, d: 0.15 }, // C6
+                                { f: 783.99, t: 0.45, d: 0.1 },  // G5
+                                { f: 1046.50, t: 0.55, d: 0.4 }  // C6 Final
+                            ];
+                            
+                            notes.forEach(n => {
+                                const osc = ctx.createOscillator();
+                                const gain = ctx.createGain();
+                                osc.type = 'square';
+                                osc.frequency.setValueAtTime(n.f, now + n.t);
+                                gain.gain.setValueAtTime(0.1, now + n.t);
+                                gain.gain.exponentialRampToValueAtTime(0.001, now + n.t + n.d);
+                                osc.connect(gain);
+                                gain.connect(ctx.destination);
+                                osc.start(now + n.t);
+                                osc.stop(now + n.t + n.d);
+                            });
+                        } catch(e) {}
+                    };
+
+                    const completeWorkout = () => {
+                        playSuccessChime();
+                        
+                        const container = document.querySelector('.workout-container');
+                        if (container) {
+                            container.classList.add('success-anim');
+                            const emojis = ['🎉', '💪', '🔥', '🏆', '💯'];
+                            for(let i=0; i<6; i++) {
+                                const el = document.createElement('div');
+                                el.className = 'confetti';
+                                el.innerText = emojis[Math.floor(Math.random() * emojis.length)];
+                                el.style.left = (10 + Math.random() * 80) + '%';
+                                el.style.top = '40%';
+                                document.body.appendChild(el);
+                            }
+                        }
+
+                        setTimeout(() => {
                             vscode.postMessage({
                                 type: 'workoutDone'
                             });
-                        });
-                    }
+                        }, 1200);
+                    };
 
                     const amountEl = document.getElementById('workout-amount');
                     const unitEl = document.getElementById('workout-unit');
@@ -479,8 +659,70 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                                     calEl.innerText = targetCalories.toFixed(1);
                                 }
                                 if (doneButton) {
-                                    doneButton.style.display = 'block';
-                                    doneButton.classList.add('fade-in');
+                                    const isTimeBased = '${workout ? workout.type : ''}' === 'time';
+                                    if (isTimeBased) {
+                                        const timerBtn = document.getElementById('timer-button');
+                                        if (timerBtn) {
+                                            timerBtn.style.display = 'block';
+                                            timerBtn.classList.add('fade-in');
+                                            
+                                            let timeLeft = targetAmount;
+                                            let timerInterval = null;
+                                            let isPreparing = false;
+                                            
+                                            const startMainTimer = () => {
+                                                timerBtn.innerText = 'PAUSE';
+                                                timerBtn.style.backgroundColor = 'var(--vscode-charts-red)';
+                                                timerInterval = setInterval(() => {
+                                                    timeLeft--;
+                                                    amountEl.innerText = timeLeft;
+                                                    if (timeLeft <= 0) {
+                                                        clearInterval(timerInterval);
+                                                        timerBtn.style.display = 'none';
+                                                        completeWorkout();
+                                                    }
+                                                }, 1000);
+                                            };
+
+                                            timerBtn.addEventListener('click', () => {
+                                                if (isPreparing) return;
+                                                
+                                                if (timerInterval) {
+                                                    clearInterval(timerInterval);
+                                                    timerInterval = null;
+                                                    timerBtn.innerText = 'RESUME TIMER';
+                                                    timerBtn.style.backgroundColor = 'var(--vscode-charts-orange)';
+                                                } else {
+                                                    if (timeLeft === targetAmount) {
+                                                        isPreparing = true;
+                                                        let prepTime = 3;
+                                                        timerBtn.innerText = 'GET READY: ' + prepTime;
+                                                        timerBtn.style.backgroundColor = '#2ea043'; // Solid green
+                                                        
+                                                        const prepInterval = setInterval(() => {
+                                                            prepTime--;
+                                                            if (prepTime > 0) {
+                                                                timerBtn.innerText = 'GET READY: ' + prepTime;
+                                                                playSound(440, 100);
+                                                            } else {
+                                                                clearInterval(prepInterval);
+                                                                isPreparing = false;
+                                                                playSound(880, 200);
+                                                                speak('Go!');
+                                                                startMainTimer();
+                                                            }
+                                                        }, 1000);
+                                                        playSound(440, 100);
+                                                    } else {
+                                                        startMainTimer();
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    } else {
+                                        doneButton.style.display = 'block';
+                                        doneButton.classList.add('fade-in');
+                                    }
                                 }
                             } else {
                                 amountEl.innerText = Math.floor(Math.random() * 99) + 1;
