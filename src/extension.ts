@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+const ENABLE_DEBUG_DELETE = false;
+
 export function activate(context: vscode.ExtensionContext) {
     console.log('Congratulations, your extension "workout-vs-code-extension" is now active!');
 
@@ -172,6 +174,15 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                         }
                         break;
                     }
+                case 'deleteWorkout':
+                    {
+                        const key = `workout_history_v2_${data.dateStr}`;
+                        let history = this._globalState.get<WorkoutSession[]>(key, []);
+                        history = history.filter(s => s.timestamp !== data.timestamp);
+                        this._globalState.update(key, history);
+                        this._updateWebview();
+                        break;
+                    }
             }
         });
     }
@@ -221,7 +232,20 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
     }
 
     private _getHtmlForWebview(): string {
-        const history = this._getHistory();
+        const today = new Date();
+        const pastDaysData: { dateStr: string, label: string, sessions: WorkoutSession[] }[] = [];
+        
+        for (let i = 29; i >= 0; i--) {
+            const d = new Date(today);
+            d.setDate(d.getDate() - i);
+            const dateStr = d.toDateString();
+            const label = i === 0 ? "Today" : `${d.toLocaleString('default', { month: 'short' })} ${d.getDate()}`;
+            const key = `workout_history_v2_${dateStr}`;
+            const sessions = this._globalState.get<WorkoutSession[]>(key, []);
+            pastDaysData.push({ dateStr, label, sessions });
+        }
+        
+        const history = pastDaysData[29].sessions; // Today's history
         const workout = this._currentWorkout;
 
         const totalCalories = history.reduce((sum, session) => sum + (session.calories || 0), 0);
@@ -230,25 +254,9 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
         const lastCalories = wasJustAdded ? history[history.length - 1].calories : 0;
         const startCalories = totalCalories - lastCalories;
 
-        const historyHtml = history.length > 0 
-            ? [...history].reverse().map((session, index) => {
-                const time = new Date(session.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                // Persistent glimmer for the top item as long as no new workout is active
-                const isNewest = index === 0 && !workout;
-                return `
-                    <div class="history-item ${isNewest ? 'glimmer' : ''}">
-                        <div class="history-left">
-                            <span class="history-time">${time}</span>
-                            <span class="history-name">${session.workout}</span>
-                        </div>
-                        <span class="history-calories">+${(session.calories || 0).toFixed(1)} kcal</span>
-                    </div>`;
-            }).join('')
-            : '<div class="no-history">No workouts yet today. Get started!</div>';
-
         const contentHtml = workout 
             ? `<div class="workout-container">
-                    <div class="icon">💪</div>
+                    <div class="icon workout-robot">🤖<span style="font-size: 20px; position: absolute; margin-left: -5px; margin-top: 15px;">💪</span></div>
                     <div class="title">Workout of the Moment</div>
                     <h1 class="workout">
                         <span id="workout-amount" class="rolling-number">0</span><span id="workout-unit" style="display:none;">${workout.type === 'time' ? 's' : ''}</span> <span id="workout-name" style="display:none;">${workout.name}</span>
@@ -257,10 +265,15 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                         🔥 <span id="workout-calories">0</span> kcal
                     </div>
                 </div>
-                <button id="timer-button" style="display:none; background-color: var(--vscode-charts-orange); margin-bottom: 10px;">START TIMER</button>
-                <button id="done-button" style="display:none;">I DID IT!</button>`
+                <button id="timer-button" style="display:none; background-color: var(--vscode-charts-orange); margin-bottom: 10px;">⏱️ START TIMER</button>
+                <button id="done-button" style="display:none;">✅ I DID IT!</button>`
             : `<div class="waiting-container">
-                    <div class="icon">🤖</div>
+                    <div class="icon-container">
+                        <div class="icon sleeping-robot">🤖</div>
+                        <div class="zzz" style="left: 55%; top: 20%; animation-delay: 0s; font-size: 10px;">z</div>
+                        <div class="zzz" style="left: 75%; top: 0%; animation-delay: 1s; font-size: 14px;">Z</div>
+                        <div class="zzz" style="left: 95%; top: -20%; animation-delay: 2s; font-size: 18px;">Z</div>
+                    </div>
                     <div class="title">Status</div>
                     <h1 class="waiting">Waiting for next AI prompt...</h1>
                     <p class="description">Start chatting with Antigravity to trigger your next workout.</p>
@@ -449,6 +462,19 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                         font-style: italic;
                         font-size: 13px;
                     }
+                    .delete-btn {
+                        background: none;
+                        border: none;
+                        color: var(--vscode-errorForeground);
+                        cursor: pointer;
+                        opacity: 0.5;
+                        padding: 0 5px;
+                        font-size: 12px;
+                        transition: opacity 0.2s;
+                    }
+                    .delete-btn:hover {
+                        opacity: 1;
+                    }
                     @keyframes glimmerAnim {
                         0% { box-shadow: 0 0 0 0 rgba(255, 165, 0, 0.4); border: 1px solid var(--vscode-charts-orange); }
                         50% { box-shadow: 0 0 10px 2px rgba(255, 165, 0, 0.2); border: 1px solid var(--vscode-charts-orange); opacity: 0.8; }
@@ -460,7 +486,88 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                     .icon {
                         margin-bottom: 15px;
                         font-size: 32px;
+                        position: relative;
+                        display: inline-block;
                     }
+                    .icon-container {
+                        position: relative;
+                        display: inline-block;
+                        margin-bottom: 15px;
+                    }
+                    .sleeping-robot {
+                        filter: grayscale(0.5);
+                        opacity: 0.8;
+                        transform: rotate(-5deg);
+                    }
+                    .zzz {
+                        position: absolute;
+                        font-weight: bold;
+                        color: var(--vscode-descriptionForeground);
+                        opacity: 0;
+                        animation: zzzFloat 3s infinite linear;
+                    }
+                    @keyframes zzzFloat {
+                        0% { transform: translate(0, 0) scale(0.5); opacity: 0; }
+                        20% { opacity: 0.8; }
+                        80% { opacity: 0.8; }
+                        100% { transform: translate(15px, -40px) scale(1.5); opacity: 0; }
+                    }
+                    .workout-robot {
+                        animation: robotPump 0.8s infinite ease-in-out;
+                    }
+                    @keyframes robotPump {
+                        0% { transform: translateY(0) scaleY(1); }
+                        50% { transform: translateY(8px) scaleY(0.85); }
+                        100% { transform: translateY(0) scaleY(1); }
+                    }
+                    
+                    /* Contribution Graph */
+                    .graph-container {
+                        margin-bottom: 20px;
+                        width: 100%;
+                        background-color: var(--vscode-editor-inactiveSelectionBackground);
+                        border-radius: 8px;
+                        padding: 15px;
+                        box-sizing: border-box;
+                    }
+                    .graph-title {
+                        font-size: 12px;
+                        color: var(--vscode-descriptionForeground);
+                        margin-bottom: 12px;
+                        text-transform: uppercase;
+                        letter-spacing: 1px;
+                        display: flex;
+                        justify-content: space-between;
+                    }
+                    .graph-grid {
+                        display: flex;
+                        gap: 4px;
+                        flex-wrap: wrap;
+                        justify-content: flex-start;
+                    }
+                    .graph-day {
+                        width: 14px;
+                        height: 14px;
+                        border-radius: 3px;
+                        background-color: var(--vscode-editor-background);
+                        cursor: pointer;
+                        transition: transform 0.1s, box-shadow 0.1s;
+                        border: 1px solid rgba(255,255,255,0.05);
+                    }
+                    .graph-day:hover {
+                        transform: scale(1.3);
+                        box-shadow: 0 0 5px rgba(0,0,0,0.5);
+                        z-index: 10;
+                    }
+                    .graph-day.selected {
+                        border: 1px solid var(--vscode-focusBorder);
+                        transform: scale(1.1);
+                    }
+                    .intensity-0 { background-color: var(--vscode-editor-background); }
+                    .intensity-1 { background-color: #0e4429; }
+                    .intensity-2 { background-color: #006d32; }
+                    .intensity-3 { background-color: #26a641; }
+                    .intensity-4 { background-color: #39d353; }
                     
                     /* Custom Scrollbar */
                     .history-container::-webkit-scrollbar {
@@ -475,16 +582,114 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
             <body>
                 ${contentHtml}
 
+                <div class="graph-container">
+                    <div class="graph-title">
+                        <span>Last 30 Days</span>
+                        <span id="graph-total-workouts" style="color: #39d353; font-weight: bold;">0 workouts</span>
+                    </div>
+                    <div class="graph-grid" id="contribution-graph"></div>
+                </div>
+
                 <div class="history-container">
                     <div class="history-title">
-                        <span>Today's Activity (${history.length})</span>
+                        <span id="history-header-title">Today's Activity (${history.length})</span>
                         <span id="total-calories-display" data-target="${totalCalories.toFixed(1)}" data-start="${startCalories.toFixed(1)}" style="color: var(--vscode-charts-red); font-size: 12px; font-weight: bold;">🔥 ${startCalories.toFixed(1)} kcal</span>
                     </div>
-                    ${historyHtml}
+                    <div id="history-list-container">
+                        <!-- Dynamic history will be rendered here -->
+                    </div>
                 </div>
 
                 <script>
                     const vscode = acquireVsCodeApi();
+                    const pastDaysData = ${JSON.stringify(pastDaysData)};
+                    const hasActiveWorkout = ${workout ? 'true' : 'false'};
+                    const wasJustAdded = ${wasJustAdded};
+                    const enableDelete = ${ENABLE_DEBUG_DELETE};
+                    let selectedDayIndex = 29;
+
+                    const renderHistoryList = (dayIndex) => {
+                        const dayData = pastDaysData[dayIndex];
+                        const container = document.getElementById('history-list-container');
+                        const headerTitle = document.getElementById('history-header-title');
+                        const totalCalEl = document.getElementById('total-calories-display');
+                        
+                        const totalCals = dayData.sessions.reduce((sum, s) => sum + (s.calories || 0), 0);
+                        headerTitle.innerText = \`\${dayData.label}'s Activity (\${dayData.sessions.length})\`;
+                        
+                        if (dayIndex !== 29 || !wasJustAdded) {
+                            totalCalEl.innerText = '🔥 ' + totalCals.toFixed(1) + ' kcal';
+                            totalCalEl.setAttribute('data-target', totalCals.toFixed(1));
+                            totalCalEl.setAttribute('data-start', totalCals.toFixed(1));
+                        }
+
+                        if (dayData.sessions.length > 0) {
+                            container.innerHTML = [...dayData.sessions].reverse().map((session, i) => {
+                                const time = new Date(session.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                                const isNewest = i === 0 && dayIndex === 29 && !hasActiveWorkout;
+                                const deleteHtml = enableDelete ? \`<button class="delete-btn" data-date="\${dayData.dateStr}" data-timestamp="\${session.timestamp}" title="Delete workout">🗑️</button>\` : '';
+                                return \`
+                                    <div class="history-item \${isNewest ? 'glimmer' : ''}">
+                                        <div class="history-left">
+                                            \${deleteHtml}
+                                            <span class="history-time">\${time}</span>
+                                            <span class="history-name">\${session.workout}</span>
+                                        </div>
+                                        <span class="history-calories">+\${(session.calories || 0).toFixed(1)} kcal</span>
+                                    </div>\`;
+                            }).join('');
+                        } else {
+                            container.innerHTML = '<div class="no-history">No workouts for this day. Take a rest!</div>';
+                        }
+                    };
+
+                    const renderGraph = () => {
+                        const graphEl = document.getElementById('contribution-graph');
+                        const totalEl = document.getElementById('graph-total-workouts');
+                        let totalWorkouts = 0;
+                        
+                        pastDaysData.forEach((day, index) => {
+                            const count = day.sessions.length;
+                            totalWorkouts += count;
+                            
+                            let intensity = 0;
+                            if (count > 0) intensity = 1;
+                            if (count >= 3) intensity = 2;
+                            if (count >= 5) intensity = 3;
+                            if (count >= 8) intensity = 4;
+
+                            const cell = document.createElement('div');
+                            cell.className = \`graph-day intensity-\${intensity}\`;
+                            if (index === selectedDayIndex) cell.classList.add('selected');
+                            cell.title = \`\${count} workouts on \${day.label}\`;
+                            
+                            cell.addEventListener('click', () => {
+                                document.querySelectorAll('.graph-day').forEach(el => el.classList.remove('selected'));
+                                cell.classList.add('selected');
+                                selectedDayIndex = index;
+                                renderHistoryList(selectedDayIndex);
+                            });
+                            
+                            graphEl.appendChild(cell);
+                        });
+                        
+                        totalEl.innerText = \`\${totalWorkouts} workouts in 30 days\`;
+                    };
+
+                    renderGraph();
+                    renderHistoryList(selectedDayIndex);
+
+                    document.getElementById('history-list-container').addEventListener('click', (e) => {
+                        const btn = e.target.closest('.delete-btn');
+                        if (btn) {
+                            vscode.postMessage({
+                                type: 'deleteWorkout',
+                                dateStr: btn.getAttribute('data-date'),
+                                timestamp: parseInt(btn.getAttribute('data-timestamp'), 10)
+                            });
+                        }
+                    });
+
                     const doneButton = document.getElementById('done-button');
                     
                     if (doneButton) {
@@ -671,7 +876,7 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                                             let isPreparing = false;
                                             
                                             const startMainTimer = () => {
-                                                timerBtn.innerText = 'PAUSE';
+                                                timerBtn.innerText = '⏸️ PAUSE';
                                                 timerBtn.style.backgroundColor = 'var(--vscode-charts-red)';
                                                 timerInterval = setInterval(() => {
                                                     timeLeft--;
@@ -690,13 +895,13 @@ class WorkoutViewProvider implements vscode.WebviewViewProvider {
                                                 if (timerInterval) {
                                                     clearInterval(timerInterval);
                                                     timerInterval = null;
-                                                    timerBtn.innerText = 'RESUME TIMER';
+                                                    timerBtn.innerText = '⏱️ RESUME';
                                                     timerBtn.style.backgroundColor = 'var(--vscode-charts-orange)';
                                                 } else {
                                                     if (timeLeft === targetAmount) {
                                                         isPreparing = true;
                                                         let prepTime = 3;
-                                                        timerBtn.innerText = 'GET READY: ' + prepTime;
+                                                        timerBtn.innerText = '⏱️ READY: ' + prepTime;
                                                         timerBtn.style.backgroundColor = '#2ea043'; // Solid green
                                                         
                                                         const prepInterval = setInterval(() => {
